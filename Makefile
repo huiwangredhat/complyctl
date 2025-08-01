@@ -64,6 +64,10 @@ test-unit:
 	go test -race -v -coverprofile=coverage.out ./...
 .PHONY: test-unit
 
+test-integration: ## run integration tests                                                                                                                                                                 │
+	go test -v ./test/integration/...                                                                                                                                                     │
+.PHONY: test-integration 
+
 sanity: vendor format vet ## ensure code is ready for commit
 	git diff --exit-code
 .PHONY: sanity

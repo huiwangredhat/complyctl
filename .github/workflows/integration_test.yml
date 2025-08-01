@@ -1,0 +1,37 @@
+name: Integration Test
+
+on:
+  # Run on pushes to the pipeline_integration branch
+  push:
+    branches:
+      - pipeline_integration
+  # Allow manual runs from the Actions tab
+  workflow_dispatch:
+
+# Set default permissions for the GITHUB_TOKEN to read-only for security
+permissions:
+  contents: read
+
+# Cancel redundant, in-progress runs for the same PR or branch
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  integration-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        # Using a floating version like @v4 is common and receives security patches.
+        # Your original method of pinning to a commit hash is the most secure approach.
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: './go.mod'
+          # Enable caching for Go modules by default with setup-go
+          cache: true
+
+      - name: Run integration tests
+        run: make test-integration 
