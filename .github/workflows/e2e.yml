@@ -1,0 +1,74 @@
+name: e2e
+
+on:
+  # Triggers the workflow on pull request events for the main branch
+  pull_request:
+    types:
+      - opened
+      - synchronize 
+
+jobs:
+  run-e2e-on-fedora-vm:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Checkout the code from the repository
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      
+      # Set up Lima, the tool that will create our fedora VM.
+      - name: Set up Lima
+        uses: lima-vm/lima-actions/setup@v1
+        id: lima
+
+      # Use a cache for Lima to speed up subsequent runs.
+      # This is a recommended best practice to make your workflows faster.
+      - name: Cache Lima downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/lima
+          key: lima-${{ runner.os }}-${{ steps.lima.outputs.version }}
+
+      # Start the Fedora VM.
+      # 'limactl start' downloads the Fedora cloud image and boots it as a VM.
+      # The template://fedora shorthand makes it easy to specify.
+      - name: Start Fedora VM
+        run: limactl start --name=fedora template://fedora 
+
+      - name: Install the dependences on fedora VM
+        run: |
+          limactl shell fedora bash -c '
+            sudo dnf install git wget make scap-security-guide go tree -y
+          '
+      - name: Build complyctl
+        run: |
+          limactl shell fedora bash -c '
+            set -e
+            sudo chown -R runner:runner /usr/local/
+            sudo chown -R runner:runner /usr/share/
+            cp -R ../complyctl /tmp && cd /tmp/complyctl
+            make build && cp ./bin/complyctl /usr/local/bin
+            '
+      - name: Init complyctl
+        run: |
+          limactl shell fedora bash -c '
+            pwd
+            export COMPLYTIME_DEV_MODE=1
+            set +e
+            # Running list command that will fail due to no requirements files
+            echo "Attempting to run the command complyctl list."
+            bin/complyctl list 2>/dev/null
+            echo "An error occurred, but script continues after the complyctl list."
+            # Copy the artifacts to workspace
+            cp docs/samples/sample-component-definition.json ~/.local/share/complytime/bundles
+            cp docs/samples/sample-profile.json docs/samples/sample-catalog.json ~/.local/share/complytime/controls
+
+            # Copy the binary plugin and manifest files
+            cp -rp bin/openscap-plugin ~/.local/share/complytime/plugins
+            checksum=$(sha256sum ~/.local/share/complytime/plugins/openscap-plugin| cut -d ' ' -f 1 )
+            cp docs/samples/c2p-openscap-manifest.json   ~/.local/share/complytime/plugins          
+      - name: Run e2e tests
+        run: |
+          limactl shell fedora bash -c '
+            go test test/e2e/e2e_test.go -v
+            '
